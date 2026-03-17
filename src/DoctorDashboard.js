@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PatientGameConnectPage from './PatientGameConnectPage';
+import RehabRecords from './RehabRecords';
 import { supabase } from './supabaseClient';
 
 
@@ -22,19 +23,6 @@ const DoctorDashboard = ({ user, onLogout }) => {
     { value: '4', label: '等級4', description: '中重度障礙,日常生活起居和行走都需要他人協助' },
     { value: '5', label: '等級5', description: '重度障礙,臥床,大小便失禁,完全沒有生活自理能力,需要他人照護' }
   ];
-
-const loadDoctorProfile = useCallback(() => {
-  // your code
-}, []);
-
-const loadPatients = useCallback(() => {
-  // your code
-}, []);
-
-useEffect(() => {
-  loadDoctorProfile();
-  loadPatients();
-}, [loadDoctorProfile, loadPatients]);
 
   const loadDoctorProfile = async () => {
     try {
@@ -201,6 +189,9 @@ useEffect(() => {
       setLoading(false);
     }
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadDoctorProfile(); loadPatients(); }, []);
 
   // 篩選病患
   const filteredPatients = patients.filter(patient =>
@@ -955,28 +946,11 @@ useEffect(() => {
 
   // 渲染復健紀錄
   const renderRecords = () => (
-    <div style={styles.editForm}>
-      <h3>復健紀錄 - {selectedPatient?.full_name}</h3>
-      <div style={{ marginTop: '20px' }}>
-        <p style={{ color: '#6B7280', marginBottom: '16px' }}>
-          病患編號: {selectedPatient?.patient_number}
-        </p>
-        <p style={{ color: '#6B7280', marginBottom: '20px' }}>
-          復健紀錄功能開發中...
-        </p>
-        <p style={{ color: '#6B7280', fontSize: '14px' }}>
-          未來這裡會顯示：
-        </p>
-        <ul style={{ color: '#6B7280', fontSize: '14px', marginTop: '8px' }}>
-          <li>復健進度圖表</li>
-          <li>運動項目記錄</li>
-          <li>完成度統計</li>
-          <li>醫師評估備註</li>
-        </ul>
-      </div>
+    <div>
+      <RehabRecords patient={selectedPatient} doctorProfile={doctorProfile} />
       <button
         onClick={() => setCurrentView('patients')}
-        style={{...styles.button('secondary'), marginTop: '20px'}}
+        style={{...styles.button('secondary'), marginTop: '16px'}}
       >
         返回病患列表
       </button>

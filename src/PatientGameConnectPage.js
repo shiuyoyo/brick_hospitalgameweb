@@ -68,6 +68,14 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
   };
 }, [patient, supabase]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let isMounted = true;
+    const cleanup = async () => {
+      if (!isMounted) return;
+      if (channelRef.current) { await supabase.removeChannel(channelRef.current); channelRef.current = null; }
+      if (sessionChannelRef.current) { await supabase.removeChannel(sessionChannelRef.current); sessionChannelRef.current = null; }
+    };
     const createSession = async () => {
       setLoading(true);
       setError('');
