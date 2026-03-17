@@ -23,19 +23,6 @@ const DoctorDashboard = ({ user, onLogout }) => {
     { value: '5', label: '等級5', description: '重度障礙,臥床,大小便失禁,完全沒有生活自理能力,需要他人照護' }
   ];
 
-const loadDoctorProfile = useCallback(() => {
-  // your code
-}, []);
-
-const loadPatients = useCallback(() => {
-  // your code
-}, []);
-
-useEffect(() => {
-  loadDoctorProfile();
-  loadPatients();
-}, [loadDoctorProfile, loadPatients]);
-
   const loadDoctorProfile = async () => {
     try {
       // 獲取當前醫生的資料
@@ -201,6 +188,11 @@ useEffect(() => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDoctorProfile();
+    loadPatients();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 篩選病患
   const filteredPatients = patients.filter(patient =>
