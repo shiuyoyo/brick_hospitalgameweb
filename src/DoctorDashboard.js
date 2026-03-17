@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PatientGameConnectPage from './PatientGameConnectPage';
+import RehabRecords from './RehabRecords';
 import { supabase } from './supabaseClient';
 
 
@@ -954,34 +955,28 @@ useEffect(() => {
   };
 
   // 渲染復健紀錄
-  const renderRecords = () => (
-    <div style={styles.editForm}>
-      <h3>復健紀錄 - {selectedPatient?.full_name}</h3>
-      <div style={{ marginTop: '20px' }}>
-        <p style={{ color: '#6B7280', marginBottom: '16px' }}>
-          病患編號: {selectedPatient?.patient_number}
-        </p>
-        <p style={{ color: '#6B7280', marginBottom: '20px' }}>
-          復健紀錄功能開發中...
-        </p>
-        <p style={{ color: '#6B7280', fontSize: '14px' }}>
-          未來這裡會顯示：
-        </p>
-        <ul style={{ color: '#6B7280', fontSize: '14px', marginTop: '8px' }}>
-          <li>復健進度圖表</li>
-          <li>運動項目記錄</li>
-          <li>完成度統計</li>
-          <li>醫師評估備註</li>
-        </ul>
-      </div>
-      <button
-        onClick={() => setCurrentView('patients')}
-        style={{...styles.button('secondary'), marginTop: '20px'}}
-      >
-        返回病患列表
-      </button>
-    </div>
-  );
+  const renderRecords = () => {
+    if (!selectedPatient) {
+      return (
+        <div style={styles.editForm}>
+          <p style={{ color: '#6B7280' }}>請先從病患列表選擇一位病患。</p>
+          <button
+            onClick={() => setCurrentView('patients')}
+            style={{ ...styles.button('secondary'), marginTop: '20px' }}
+          >
+            返回病患列表
+          </button>
+        </div>
+      );
+    }
+    return (
+      <RehabRecords
+        patient={selectedPatient}
+        isDoctor={true}
+        onBack={() => setCurrentView('patients')}
+      />
+    );
+  };
 
   return (
     <div style={styles.dashboard}>

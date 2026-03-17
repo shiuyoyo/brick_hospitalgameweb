@@ -3,7 +3,115 @@ import { supabase } from './supabaseClient';
 import GeneralRegisterPage from './GeneralRegisterPage';
 import DoctorRegisterPage from './DoctorRegisterPage';
 import DoctorDashboard from './DoctorDashboard';
+import RehabRecords from './RehabRecords';
 
+// ─── Patient Dashboard ───────────────────────────────────────────────────────
+const PatientDashboard = ({ user, onLogout }) => {
+  const [view, setView] = useState('home'); // 'home' | 'rehab'
+
+  const patientObj = {
+    id: user.id,
+    full_name: user.user_metadata?.full_name || user.user_metadata?.username || '用戶',
+    username: user.user_metadata?.username,
+  };
+
+  const navStyle = {
+    backgroundColor: 'white',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    padding: '16px',
+  };
+  const navContainerStyle = {
+    maxWidth: '1152px',
+    margin: '0 auto',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#F9FAFB' }}>
+      <nav style={navStyle}>
+        <div style={navContainerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '32px', height: '32px', backgroundColor: '#4F46E5', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>積</span>
+            </div>
+            <span style={{ fontWeight: '600', color: '#1F2937' }}>積木復健系統</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ color: '#6B7280', fontSize: '14px' }}>
+              {patientObj.full_name}
+            </span>
+            <button
+              onClick={onLogout}
+              style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              登出
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <div style={{ maxWidth: '1152px', margin: '0 auto', padding: '24px' }}>
+        {view === 'rehab' ? (
+          <RehabRecords
+            patient={patientObj}
+            isDoctor={false}
+            onBack={() => setView('home')}
+          />
+        ) : (
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '32px' }}>
+            <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px', color: '#1F2937' }}>
+              歡迎使用積木復健系統
+            </h2>
+            <p style={{ color: '#6B7280', marginBottom: '32px' }}>
+              您好，{patientObj.full_name}！以下是您的功能選單。
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+              {/* 復健記錄卡片 */}
+              <div
+                onClick={() => setView('rehab')}
+                style={{
+                  background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                  border: '1px solid #C7D2FE',
+                  borderRadius: '12px',
+                  padding: '24px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📊</div>
+                <h3 style={{ margin: '0 0 8px', color: '#3730A3', fontWeight: 700 }}>我的復健記錄</h3>
+                <p style={{ margin: 0, color: '#6B7280', fontSize: '14px' }}>
+                  查看復健進度圖表、運動項目、完成度統計與醫師評估備註。
+                </p>
+              </div>
+
+              {/* 遊戲提示卡片 */}
+              <div style={{
+                background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                border: '1px solid #A7F3D0',
+                borderRadius: '12px',
+                padding: '24px',
+              }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎮</div>
+                <h3 style={{ margin: '0 0 8px', color: '#065F46', fontWeight: 700 }}>開始遊戲</h3>
+                <p style={{ margin: 0, color: '#6B7280', fontSize: '14px' }}>
+                  請使用專用 App 並輸入醫生提供的配對碼，即可開始復健遊戲。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
 const JimuApp = () => {
   const [currentSection, setCurrentSection] = useState('login');
   const [userType, setUserType] = useState('doctor'); // 'doctor' or 'general'
@@ -706,39 +814,8 @@ const JimuApp = () => {
       case 'dashboard':
         // 根據用戶類型顯示不同的儀表板
         if (user?.user_metadata?.user_type === 'general') {
-          // 一般用戶：簡單的歡迎頁面
-          return (
-            <div style={styles.dashboard}>
-              <nav style={styles.navbar}>
-                <div style={styles.navContainer}>
-                  <div style={styles.navLogo}>
-                    <div style={styles.navLogoIcon}>
-                      <span style={{color: 'white', fontWeight: 'bold', fontSize: '14px'}}>積</span>
-                    </div>
-                    <span style={styles.navLogoText}>積木</span>
-                  </div>
-                  <button 
-                    onClick={handleLogout}
-                    style={styles.logoutButton}
-                  >
-                    登出
-                  </button>
-                </div>
-              </nav>
-
-              <div style={styles.dashboardContainer}>
-                <div style={styles.dashboardCard}>
-                  <h2 style={{fontSize: '24px', fontWeight: 'bold', marginBottom: '24px'}}>歡迎使用積木</h2>
-                  <div style={styles.textCenter}>
-                    <p style={{color: '#6B7280', marginBottom: '16px'}}>您已成功登入系統</p>
-                    <p style={{color: '#1F2937'}}>
-                      一般用戶：{user?.user_metadata?.username} ({user?.user_metadata?.full_name})
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
+          // 一般用戶：歡迎頁面 + 復健記錄入口
+          return <PatientDashboard user={user} onLogout={handleLogout} />;
         } else {
           // 醫生用戶：使用 DoctorDashboard 組件
           return <DoctorDashboard user={user} onLogout={handleLogout} />;
