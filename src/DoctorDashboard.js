@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import PatientGameConnectPage from './PatientGameConnectPage';
 import { supabase } from './supabaseClient';
 
@@ -23,20 +23,7 @@ const DoctorDashboard = ({ user, onLogout }) => {
     { value: '5', label: '等級5', description: '重度障礙,臥床,大小便失禁,完全沒有生活自理能力,需要他人照護' }
   ];
 
-const loadDoctorProfile = useCallback(() => {
-  // your code
-}, []);
-
-const loadPatients = useCallback(() => {
-  // your code
-}, []);
-
-useEffect(() => {
-  loadDoctorProfile();
-  loadPatients();
-}, [loadDoctorProfile, loadPatients]);
-
-  const loadDoctorProfile = async () => {
+  const loadDoctorProfile = useCallback(async () => {
     try {
       // 獲取當前醫生的資料
       const { data, error } = await supabase
@@ -53,9 +40,9 @@ useEffect(() => {
     } catch (err) {
       console.error('獲取醫生資料異常:', err);
     }
-  };
+  }, [user.id]);
 
-  const loadPatients = async () => {
+  const loadPatients = useCallback(async () => {
     setLoading(true);
     try {
       console.log('🔍 開始載入病患，用戶資料:', user);
@@ -200,7 +187,12 @@ useEffect(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user.id, user.email]);
+
+  useEffect(() => {
+    loadDoctorProfile();
+    loadPatients();
+  }, [loadDoctorProfile, loadPatients]);
 
   // 篩選病患
   const filteredPatients = patients.filter(patient =>
