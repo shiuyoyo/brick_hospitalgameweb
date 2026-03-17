@@ -29,6 +29,8 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
   const [stats, setStats] = useState({ correct: 0, wrong: 0, autoMiss: 0, total: 0 });
   const channelRef = useRef(null);
   const sessionChannelRef = useRef(null);
+  const statusRef = useRef('waiting');
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   const monitor = useMemo(() => {
     const gameKey = latestAction?.game_key || session?.current_game_key || '-';
@@ -62,11 +64,6 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
     }
   };
 
-  return () => {
-    isMounted = false;
-    cleanup();
-  };
-}, [patient, supabase]);
 
     const createSession = async () => {
       setLoading(true);
@@ -143,10 +140,10 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
               total: prev.total + 1
             }));
 
-            let nextStatus = status;
+            let nextStatus = statusRef.current;
             if (action.action_type === 'start') nextStatus = 'playing';
             else if (action.action_type === 'end') nextStatus = 'ended';
-            else nextStatus = status === 'waiting' ? 'connected' : status;
+            else nextStatus = statusRef.current === 'waiting' ? 'connected' : statusRef.current;
 
             setStatus(nextStatus);
             setSession((prev) => ({
