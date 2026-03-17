@@ -24,6 +24,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('waiting');
+  const statusRef = useRef('waiting');
   const [latestAction, setLatestAction] = useState(null);
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState({ correct: 0, wrong: 0, autoMiss: 0, total: 0 });
@@ -45,33 +46,28 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
     };
   }, [latestAction, session, stats, patient]);
 
- useEffect(() => {
-  if (!patient) return;
-  let isMounted = true;
+  useEffect(() => {
+    if (!patient) return;
+    let isMounted = true;
 
-  const cleanup = async () => {
-    if (!isMounted) return;
+    const cleanup = async () => {
+      if (!isMounted) return;
 
-    if (channelRef.current) {
-      await supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    if (sessionChannelRef.current) {
-      await supabase.removeChannel(sessionChannelRef.current);
-      sessionChannelRef.current = null;
-    }
-  };
-
-  return () => {
-    isMounted = false;
-    cleanup();
-  };
-}, [patient, supabase]);
+      if (channelRef.current) {
+        await supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (sessionChannelRef.current) {
+        await supabase.removeChannel(sessionChannelRef.current);
+        sessionChannelRef.current = null;
+      }
+    };
 
     const createSession = async () => {
       setLoading(true);
       setError('');
       setSession(null);
+      statusRef.current = 'waiting';
       setStatus('waiting');
       setLatestAction(null);
       setEvents([]);
@@ -111,6 +107,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
       }
 
       setSession(inserted);
+      statusRef.current = inserted.status || 'waiting';
       setStatus(inserted.status || 'waiting');
       setLoading(false);
 
@@ -122,6 +119,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
           (payload) => {
             const next = payload.new;
             setSession((prev) => ({ ...(prev || {}), ...next }));
+            statusRef.current = next.status || 'waiting';
             setStatus(next.status || 'waiting');
           }
         )
@@ -143,11 +141,12 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
               total: prev.total + 1
             }));
 
-            let nextStatus = status;
+            let nextStatus = statusRef.current;
             if (action.action_type === 'start') nextStatus = 'playing';
             else if (action.action_type === 'end') nextStatus = 'ended';
-            else nextStatus = status === 'waiting' ? 'connected' : status;
+            else nextStatus = statusRef.current === 'waiting' ? 'connected' : statusRef.current;
 
+            statusRef.current = nextStatus;
             setStatus(nextStatus);
             setSession((prev) => ({
               ...(prev || {}),
