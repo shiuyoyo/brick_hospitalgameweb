@@ -45,20 +45,28 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
     };
   }, [latestAction, session, stats, patient]);
 
-  useEffect(() => {
-    if (!patient) return;
-    let isMounted = true;
+ useEffect(() => {
+  if (!patient) return;
+  let isMounted = true;
 
-    const cleanup = async () => {
-      if (channelRef.current) {
-        await supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-      if (sessionChannelRef.current) {
-        await supabase.removeChannel(sessionChannelRef.current);
-        sessionChannelRef.current = null;
-      }
-    };
+  const cleanup = async () => {
+    if (!isMounted) return;
+
+    if (channelRef.current) {
+      await supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    if (sessionChannelRef.current) {
+      await supabase.removeChannel(sessionChannelRef.current);
+      sessionChannelRef.current = null;
+    }
+  };
+
+  return () => {
+    isMounted = false;
+    cleanup();
+  };
+}, [patient, supabase]);
 
     const createSession = async () => {
       setLoading(true);

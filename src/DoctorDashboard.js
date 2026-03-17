@@ -23,11 +23,18 @@ const DoctorDashboard = ({ user, onLogout }) => {
     { value: '5', label: '等級5', description: '重度障礙,臥床,大小便失禁,完全沒有生活自理能力,需要他人照護' }
   ];
 
-  // 載入醫生資料和病患列表
-  useEffect(() => {
-    loadDoctorProfile();
-    loadPatients();
-  }, []);
+const loadDoctorProfile = useCallback(() => {
+  // your code
+}, []);
+
+const loadPatients = useCallback(() => {
+  // your code
+}, []);
+
+useEffect(() => {
+  loadDoctorProfile();
+  loadPatients();
+}, [loadDoctorProfile, loadPatients]);
 
   const loadDoctorProfile = async () => {
     try {
