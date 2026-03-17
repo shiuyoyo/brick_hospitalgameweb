@@ -1,16 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient';
 import GeneralRegisterPage from './GeneralRegisterPage';
 import DoctorRegisterPage from './DoctorRegisterPage';
 import DoctorDashboard from './DoctorDashboard';
 
-// Supabase Configuration - 您的真實憑證
-const SUPABASE_URL = 'https://bxpooqjjozrtxbgbkymf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cG9vcWpqb3pydHhiZ2JreW1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzNDQ2NDEsImV4cCI6MjA2ODkyMDY0MX0.yUlA7kSOx_02T9LUK3p3znl4BEiEAeqDUbJMuKvbFQ8';
-
-// 真實 Supabase 客戶端
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-console.log('SUPABASE_URL =', process.env.NEXT_PUBLIC_SUPABASE_URL);
 const JimuApp = () => {
   const [currentSection, setCurrentSection] = useState('login');
   const [userType, setUserType] = useState('doctor'); // 'doctor' or 'general'

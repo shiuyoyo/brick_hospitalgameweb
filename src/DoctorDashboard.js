@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import PatientGameConnectPage from './PatientGameConnectPage';
+import { supabase } from './supabaseClient';
 
-// Supabase Configuration
-const SUPABASE_URL = 'https://bxpooqjjozrtxbgbkymf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cG9vcWpqb3pydHhiZ2JreW1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzNDQ2NDEsImV4cCI6MjA2ODkyMDY0MX0.yUlA7kSOx_02T9LUK3p3znl4BEiEAeqDUbJMuKvbFQ8';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const DoctorDashboard = ({ user, onLogout }) => {
-  const [currentView, setCurrentView] = useState('patients'); // 'patients', 'records', 'editPatient'
+  const [currentView, setCurrentView] = useState('patients'); // 'patients', 'records', 'editPatient', 'pairing'
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -505,9 +501,9 @@ const DoctorDashboard = ({ user, onLogout }) => {
       cursor: 'pointer',
       fontWeight: '500',
       backgroundColor: variant === 'primary' ? '#4F46E5' : 
-                     variant === 'secondary' ? '#F3F4F6' : '#10B981',
-      color: variant === 'primary' ? 'white' : 
-             variant === 'secondary' ? '#374151' : 'white'
+                     variant === 'secondary' ? '#F3F4F6' :
+                     variant === 'warning' ? '#F59E0B' : '#10B981',
+      color: variant === 'secondary' ? '#374151' : 'white'
     }),
     editForm: {
       backgroundColor: 'white',
@@ -663,6 +659,15 @@ const DoctorDashboard = ({ user, onLogout }) => {
                     style={styles.button('success')}
                   >
                     復健紀錄
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedPatient(patient);
+                      setCurrentView('pairing');
+                    }}
+                    style={styles.button('warning')}
+                  >
+                    遊戲配對
                   </button>
                 </div>
               </div>
@@ -915,6 +920,32 @@ const DoctorDashboard = ({ user, onLogout }) => {
     );
   };
 
+  // 渲染遊戲配對與即時監看
+  const renderPairing = () => {
+    if (!selectedPatient) {
+      return (
+        <div style={styles.editForm}>
+          <h3>病患遊戲連線</h3>
+          <p style={{ color: '#6B7280', marginTop: '12px' }}>請先從病患列表選擇一位病患，再建立配對碼。</p>
+          <button
+            onClick={() => setCurrentView('patients')}
+            style={{ ...styles.button('secondary'), marginTop: '20px' }}
+          >
+            返回病患列表
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <PatientGameConnectPage
+        patient={selectedPatient}
+        user={user}
+        onBack={() => setCurrentView('patients')}
+      />
+    );
+  };
+
   // 渲染復健紀錄
   const renderRecords = () => (
     <div style={styles.editForm}>
@@ -977,12 +1008,20 @@ const DoctorDashboard = ({ user, onLogout }) => {
           >
             復健紀錄 {selectedPatient && `- ${selectedPatient.full_name}`}
           </button>
+          <button
+            onClick={() => setCurrentView('pairing')}
+            style={styles.tab(currentView === 'pairing')}
+            disabled={!selectedPatient}
+          >
+            遊戲配對 {selectedPatient && `- ${selectedPatient.full_name}`}
+          </button>
         </div>
 
         {/* 內容區域 */}
         {currentView === 'patients' && renderPatientsList()}
         {currentView === 'editPatient' && renderEditForm()}
         {currentView === 'records' && renderRecords()}
+        {currentView === 'pairing' && renderPairing()}
       </div>
     </div>
   );
