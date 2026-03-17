@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 import GeneralRegisterPage from './GeneralRegisterPage';
 import DoctorRegisterPage from './DoctorRegisterPage';
 import DoctorDashboard from './DoctorDashboard';
+import RehabDashboard from './RehabDashboard';
 
 const JimuApp = () => {
   const [currentSection, setCurrentSection] = useState('login');
@@ -706,39 +707,8 @@ const JimuApp = () => {
       case 'dashboard':
         // 根據用戶類型顯示不同的儀表板
         if (user?.user_metadata?.user_type === 'general') {
-          // 一般用戶：簡單的歡迎頁面
-          return (
-            <div style={styles.dashboard}>
-              <nav style={styles.navbar}>
-                <div style={styles.navContainer}>
-                  <div style={styles.navLogo}>
-                    <div style={styles.navLogoIcon}>
-                      <span style={{color: 'white', fontWeight: 'bold', fontSize: '14px'}}>積</span>
-                    </div>
-                    <span style={styles.navLogoText}>積木</span>
-                  </div>
-                  <button 
-                    onClick={handleLogout}
-                    style={styles.logoutButton}
-                  >
-                    登出
-                  </button>
-                </div>
-              </nav>
-
-              <div style={styles.dashboardContainer}>
-                <div style={styles.dashboardCard}>
-                  <h2 style={{fontSize: '24px', fontWeight: 'bold', marginBottom: '24px'}}>歡迎使用積木</h2>
-                  <div style={styles.textCenter}>
-                    <p style={{color: '#6B7280', marginBottom: '16px'}}>您已成功登入系統</p>
-                    <p style={{color: '#1F2937'}}>
-                      一般用戶：{user?.user_metadata?.username} ({user?.user_metadata?.full_name})
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
+          // 一般用戶：復健儀表板
+          return <RehabDashboard user={user} onLogout={handleLogout} />;
         } else {
           // 醫生用戶：使用 DoctorDashboard 組件
           return <DoctorDashboard user={user} onLogout={handleLogout} />;
