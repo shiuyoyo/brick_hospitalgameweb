@@ -43,8 +43,6 @@ const DoctorDashboard = ({ user, onLogout }) => {
     thin_circle: '細圓環',
   };
 
-  const CHART_COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#0EA5E9', '#8B5CF6'];
-
   // 載入病患復健資料
   const loadRehabData = useCallback(async (patient) => {
     if (!patient) return;
