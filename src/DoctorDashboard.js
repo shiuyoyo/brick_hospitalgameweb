@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PatientGameConnectPage from './PatientGameConnectPage';
 import { supabase } from './supabaseClient';
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 
 const DoctorDashboard = ({ user, onLogout }) => {
@@ -13,6 +17,14 @@ const DoctorDashboard = ({ user, onLogout }) => {
   const [doctorProfile, setDoctorProfile] = useState(null);
   const [showDisabilityInfo, setShowDisabilityInfo] = useState(false);
 
+  // 復健紀錄相關狀態
+  const [rehabSessions, setRehabSessions] = useState([]);
+  const [rehabSessionStats, setRehabSessionStats] = useState({});
+  const [rehabLoading, setRehabLoading] = useState(false);
+  const [doctorNotes, setDoctorNotes] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteHistory, setNoteHistory] = useState([]);
+
   // 動作障礙等級說明
   const disabilityLevels = [
     { value: '0', label: '等級0', description: '沒有任何症狀' },
@@ -22,6 +34,120 @@ const DoctorDashboard = ({ user, onLogout }) => {
     { value: '4', label: '等級4', description: '中重度障礙,日常生活起居和行走都需要他人協助' },
     { value: '5', label: '等級5', description: '重度障礙,臥床,大小便失禁,完全沒有生活自理能力,需要他人照護' }
   ];
+
+  const GAME_KEY_LABELS = {
+    single_color: '單色積木',
+    multi_color: '多色積木',
+    shapes_single: '圖形（單色）',
+    shapes_multi_color: '圖形（多色）',
+    thin_circle: '細圓環',
+  };
+
+  // 載入病患復健資料
+  const loadRehabData = useCallback(async (patient) => {
+    if (!patient) return;
+    setRehabLoading(true);
+    try {
+      const patientId = patient.id;
+      const username = patient.username;
+
+      // 載入遊戲場次
+      const { data: sessionsData, error } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .or(`patient_id.eq.${patientId},patient_id.eq.${username}`)
+        .order('created_at', { ascending: true })
+        .limit(100);
+
+      if (error) {
+        console.error('載入復健資料錯誤:', error);
+        setRehabSessions([]);
+        return;
+      }
+
+      setRehabSessions(sessionsData || []);
+
+      // 為每個場次計算統計
+      if (sessionsData && sessionsData.length > 0) {
+        const statsMap = {};
+        await Promise.all(
+          sessionsData.map(async (s) => {
+            const { data: acts } = await supabase
+              .from('game_actions')
+              .select('action_type')
+              .eq('session_id', s.id);
+            if (acts) {
+              statsMap[s.id] = acts.reduce(
+                (acc, a) => {
+                  if (a.action_type === 'tap_correct') acc.correct += 1;
+                  else if (a.action_type === 'tap_wrong') acc.wrong += 1;
+                  else if (a.action_type === 'auto_miss') acc.autoMiss += 1;
+                  acc.total += 1;
+                  return acc;
+                },
+                { correct: 0, wrong: 0, autoMiss: 0, total: 0 }
+              );
+            }
+          })
+        );
+        setRehabSessionStats(statsMap);
+      }
+
+      // 載入醫師評估備註 (從 user_health_records 的 medications 欄位暫存，或使用 notes)
+      await loadDoctorNotes(patientId);
+    } catch (err) {
+      console.error('載入復健資料異常:', err);
+    } finally {
+      setRehabLoading(false);
+    }
+  }, []);
+
+  // 載入醫師備註
+  const loadDoctorNotes = async (patientId) => {
+    try {
+      const { data } = await supabase
+        .from('doctor_notes')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (data) {
+        setNoteHistory(data);
+      }
+    } catch {
+      // 如果 doctor_notes 表不存在，靜默處理
+      setNoteHistory([]);
+    }
+  };
+
+  // 儲存醫師備註
+  const saveDoctorNote = async () => {
+    if (!doctorNotes.trim() || !selectedPatient) return;
+    setNoteSaving(true);
+    try {
+      const { error } = await supabase
+        .from('doctor_notes')
+        .insert({
+          patient_id: selectedPatient.id,
+          doctor_id: user.id,
+          doctor_name: doctorProfile?.full_name || user.email,
+          note: doctorNotes.trim(),
+        });
+      if (error) {
+        console.error('儲存備註錯誤:', error);
+        alert('儲存備註失敗，請確認 doctor_notes 資料表已建立');
+      } else {
+        alert('備註儲存成功！');
+        setDoctorNotes('');
+        await loadDoctorNotes(selectedPatient.id);
+      }
+    } catch (err) {
+      console.error('儲存備註異常:', err);
+      alert('儲存備註失敗');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   const loadDoctorProfile = useCallback(async () => {
     try {
@@ -654,6 +780,7 @@ const DoctorDashboard = ({ user, onLogout }) => {
                     onClick={() => {
                       setSelectedPatient(patient);
                       setCurrentView('records');
+                      loadRehabData(patient);
                     }}
                     style={styles.button('success')}
                   >
@@ -945,35 +1072,353 @@ const DoctorDashboard = ({ user, onLogout }) => {
     );
   };
 
-  // 渲染復健紀錄
-  const renderRecords = () => (
-    <div style={styles.editForm}>
-      <h3>復健紀錄 - {selectedPatient?.full_name}</h3>
-      <div style={{ marginTop: '20px' }}>
-        <p style={{ color: '#6B7280', marginBottom: '16px' }}>
-          病患編號: {selectedPatient?.patient_number}
-        </p>
-        <p style={{ color: '#6B7280', marginBottom: '20px' }}>
-          復健紀錄功能開發中...
-        </p>
-        <p style={{ color: '#6B7280', fontSize: '14px' }}>
-          未來這裡會顯示：
-        </p>
-        <ul style={{ color: '#6B7280', fontSize: '14px', marginTop: '8px' }}>
-          <li>復健進度圖表</li>
-          <li>運動項目記錄</li>
-          <li>完成度統計</li>
-          <li>醫師評估備註</li>
-        </ul>
+  // 渲染復健紀錄（含圖表）
+  const renderRecords = () => {
+    if (!selectedPatient) {
+      return (
+        <div style={styles.editForm}>
+          <p style={{ color: '#6B7280' }}>請先從病患列表選擇一位病患。</p>
+          <button onClick={() => setCurrentView('patients')} style={{ ...styles.button('secondary'), marginTop: '20px' }}>
+            返回病患列表
+          </button>
+        </div>
+      );
+    }
+
+    // 計算整體統計
+    const overallStats = rehabSessions.reduce(
+      (acc, s) => {
+        const st = rehabSessionStats[s.id];
+        if (st) {
+          acc.correct += st.correct;
+          acc.wrong += st.wrong;
+          acc.autoMiss += st.autoMiss;
+          acc.total += st.total;
+        }
+        if (s.status === 'ended') acc.completedSessions += 1;
+        return acc;
+      },
+      { correct: 0, wrong: 0, autoMiss: 0, total: 0, completedSessions: 0 }
+    );
+    const overallAccuracy =
+      overallStats.correct + overallStats.wrong > 0
+        ? Math.round((overallStats.correct / (overallStats.correct + overallStats.wrong)) * 100)
+        : 0;
+
+    // 準備進度圖表資料（按日期排列的正確率趨勢）
+    const progressData = rehabSessions
+      .filter(s => rehabSessionStats[s.id] && (rehabSessionStats[s.id].correct + rehabSessionStats[s.id].wrong) > 0)
+      .map((s, idx) => {
+        const st = rehabSessionStats[s.id];
+        const acc = Math.round((st.correct / (st.correct + st.wrong)) * 100);
+        return {
+          name: `#${idx + 1}`,
+          date: s.created_at ? new Date(s.created_at).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' }) : '',
+          正確率: acc,
+          正確: st.correct,
+          錯誤: st.wrong,
+          超時: st.autoMiss,
+        };
+      });
+
+    // 準備運動項目統計（按遊戲類型分組）
+    const gameTypeStats = {};
+    rehabSessions.forEach(s => {
+      const key = s.current_game_key || 'unknown';
+      if (!gameTypeStats[key]) {
+        gameTypeStats[key] = { name: GAME_KEY_LABELS[key] || key, 場次: 0, 正確: 0, 錯誤: 0, 超時: 0 };
+      }
+      gameTypeStats[key].場次 += 1;
+      const st = rehabSessionStats[s.id];
+      if (st) {
+        gameTypeStats[key].正確 += st.correct;
+        gameTypeStats[key].錯誤 += st.wrong;
+        gameTypeStats[key].超時 += st.autoMiss;
+      }
+    });
+    const gameTypeData = Object.values(gameTypeStats);
+
+    // 完成度圓餅圖資料
+    const completionData = [
+      { name: '已完成', value: overallStats.completedSessions },
+      { name: '未完成', value: rehabSessions.length - overallStats.completedSessions },
+    ].filter(d => d.value > 0);
+
+    const actionPieData = [
+      { name: '正確', value: overallStats.correct },
+      { name: '錯誤', value: overallStats.wrong },
+      { name: '超時', value: overallStats.autoMiss },
+    ].filter(d => d.value > 0);
+
+    const completionColors = ['#10B981', '#D1D5DB'];
+    const actionColors = ['#10B981', '#EF4444', '#F59E0B'];
+
+    const chartCardStyle = {
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '24px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      marginBottom: '20px',
+    };
+
+    const statCardStyle = (color) => ({
+      flex: '1 1 140px',
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '16px 20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+      borderTop: `4px solid ${color}`,
+      textAlign: 'center',
+    });
+
+    return (
+      <div>
+        {/* 標題列 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div>
+            <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#1F2937', margin: 0 }}>
+              復健紀錄 - {selectedPatient.full_name}
+            </h2>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginTop: '4px' }}>
+              病患編號: {selectedPatient.patient_number} | 共 {rehabSessions.length} 次訓練
+            </p>
+          </div>
+          <button onClick={() => setCurrentView('patients')} style={styles.button('secondary')}>
+            返回病患列表
+          </button>
+        </div>
+
+        {rehabLoading ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#6B7280' }}>載入復健資料中...</div>
+        ) : rehabSessions.length === 0 ? (
+          <div style={{ ...chartCardStyle, textAlign: 'center', padding: '60px', color: '#6B7280' }}>
+            此病患尚無訓練記錄
+          </div>
+        ) : (
+          <>
+            {/* ===== 整體統計卡片 ===== */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+              <div style={statCardStyle('#4F46E5')}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: '#1F2937' }}>{rehabSessions.length}</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>總訓練次數</div>
+              </div>
+              <div style={statCardStyle('#10B981')}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: '#1F2937' }}>{overallStats.completedSessions}</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>完成場次</div>
+              </div>
+              <div style={statCardStyle('#0EA5E9')}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: '#1F2937' }}>{overallStats.correct}</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>正確次數</div>
+              </div>
+              <div style={statCardStyle('#EF4444')}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: '#1F2937' }}>{overallStats.wrong + overallStats.autoMiss}</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>錯誤 / 超時</div>
+              </div>
+              <div style={statCardStyle('#F59E0B')}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: '#1F2937' }}>{overallAccuracy}%</div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '4px' }}>整體正確率</div>
+              </div>
+            </div>
+
+            {/* ===== 復健進度圖表 ===== */}
+            <div style={chartCardStyle}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                復健進度趨勢
+              </h3>
+              {progressData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={progressData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6B7280' }} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#6B7280' }} unit="%" />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
+                      formatter={(value, name) => [name === '正確率' ? `${value}%` : value, name]}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="正確率" stroke="#4F46E5" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="正確" stroke="#10B981" strokeWidth={1.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="錯誤" stroke="#EF4444" strokeWidth={1.5} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <p style={{ color: '#9CA3AF', textAlign: 'center', padding: '40px' }}>尚無足夠資料繪製圖表</p>
+              )}
+            </div>
+
+            {/* ===== 運動項目記錄 ===== */}
+            <div style={chartCardStyle}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                運動項目記錄
+              </h3>
+              {gameTypeData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={gameTypeData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6B7280' }} />
+                      <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }} />
+                      <Legend />
+                      <Bar dataKey="正確" fill="#10B981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="錯誤" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="超時" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  {/* 運動項目明細表格 */}
+                  <div style={{ marginTop: '16px', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
+                          <th style={{ padding: '10px', textAlign: 'left', color: '#374151' }}>遊戲類型</th>
+                          <th style={{ padding: '10px', textAlign: 'center', color: '#374151' }}>場次數</th>
+                          <th style={{ padding: '10px', textAlign: 'center', color: '#10B981' }}>正確</th>
+                          <th style={{ padding: '10px', textAlign: 'center', color: '#EF4444' }}>錯誤</th>
+                          <th style={{ padding: '10px', textAlign: 'center', color: '#F59E0B' }}>超時</th>
+                          <th style={{ padding: '10px', textAlign: 'center', color: '#4F46E5' }}>正確率</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gameTypeData.map((g, i) => {
+                          const acc = g.正確 + g.錯誤 > 0 ? Math.round((g.正確 / (g.正確 + g.錯誤)) * 100) : 0;
+                          return (
+                            <tr key={i} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                              <td style={{ padding: '10px', fontWeight: '500' }}>{g.name}</td>
+                              <td style={{ padding: '10px', textAlign: 'center' }}>{g.場次}</td>
+                              <td style={{ padding: '10px', textAlign: 'center', color: '#10B981', fontWeight: '600' }}>{g.正確}</td>
+                              <td style={{ padding: '10px', textAlign: 'center', color: '#EF4444', fontWeight: '600' }}>{g.錯誤}</td>
+                              <td style={{ padding: '10px', textAlign: 'center', color: '#F59E0B', fontWeight: '600' }}>{g.超時}</td>
+                              <td style={{ padding: '10px', textAlign: 'center', color: '#4F46E5', fontWeight: '700' }}>{acc}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <p style={{ color: '#9CA3AF', textAlign: 'center', padding: '40px' }}>尚無運動項目資料</p>
+              )}
+            </div>
+
+            {/* ===== 完成度統計 ===== */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              {/* 場次完成度 */}
+              <div style={chartCardStyle}>
+                <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                  場次完成度
+                </h3>
+                {completionData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={completionData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {completionData.map((_, i) => (
+                          <Cell key={i} fill={completionColors[i % completionColors.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p style={{ color: '#9CA3AF', textAlign: 'center', padding: '40px' }}>無資料</p>
+                )}
+              </div>
+
+              {/* 動作分佈 */}
+              <div style={chartCardStyle}>
+                <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                  動作結果分佈
+                </h3>
+                {actionPieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={actionPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={4} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {actionPieData.map((_, i) => (
+                          <Cell key={i} fill={actionColors[i % actionColors.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p style={{ color: '#9CA3AF', textAlign: 'center', padding: '40px' }}>無資料</p>
+                )}
+              </div>
+            </div>
+
+            {/* ===== 醫師評估備註 ===== */}
+            <div style={chartCardStyle}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                醫師評估備註
+              </h3>
+              <textarea
+                value={doctorNotes}
+                onChange={(e) => setDoctorNotes(e.target.value)}
+                placeholder="請輸入對此病患的復健評估備註..."
+                style={{
+                  width: '100%',
+                  minHeight: '100px',
+                  padding: '12px',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '8px',
+                  fontSize: '15px',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                <button
+                  onClick={saveDoctorNote}
+                  disabled={noteSaving || !doctorNotes.trim()}
+                  style={{
+                    ...styles.button('primary'),
+                    opacity: noteSaving || !doctorNotes.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {noteSaving ? '儲存中...' : '新增備註'}
+                </button>
+              </div>
+
+              {/* 歷史備註 */}
+              {noteHistory.length > 0 && (
+                <div style={{ marginTop: '20px', borderTop: '1px solid #E5E7EB', paddingTop: '16px' }}>
+                  <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
+                    歷史備註
+                  </h4>
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {noteHistory.map((note, i) => (
+                      <div
+                        key={note.id || i}
+                        style={{
+                          padding: '12px 16px',
+                          backgroundColor: '#F9FAFB',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          borderLeft: '3px solid #4F46E5',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#4F46E5' }}>
+                            {note.doctor_name || '醫師'}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                            {note.created_at ? new Date(note.created_at).toLocaleString('zh-TW') : ''}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '14px', color: '#374151', margin: 0, whiteSpace: 'pre-wrap' }}>
+                          {note.note}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
-      <button
-        onClick={() => setCurrentView('patients')}
-        style={{...styles.button('secondary'), marginTop: '20px'}}
-      >
-        返回病患列表
-      </button>
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={styles.dashboard}>
@@ -1001,7 +1446,10 @@ const DoctorDashboard = ({ user, onLogout }) => {
             病患管理 ({patients.length})
           </button>
           <button
-            onClick={() => setCurrentView('records')}
+            onClick={() => {
+              setCurrentView('records');
+              if (selectedPatient) loadRehabData(selectedPatient);
+            }}
             style={styles.tab(currentView === 'records')}
             disabled={!selectedPatient}
           >
