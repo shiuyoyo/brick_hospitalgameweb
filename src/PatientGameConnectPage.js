@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -20,17 +19,17 @@ const badgeColor = (status) => {
 };
 
 function reduceGameState(prev, action) {
-  const p = action.payload || {}
+  const p = action.payload || {};
 
   return {
-    type: p.gameLayout,
-    activeIndex: p.activeIndex,
-    score: p.score,
-    mistakes: p.mistakes,
-    progress: p.progress,
-    total: p.total,
-    items: p.items
-  }
+    type: p.gameLayout || action.game_key || prev?.type || null,
+    activeIndex: p.activeIndex ?? p.currentIndex ?? prev?.activeIndex ?? 0,
+    score: p.score ?? prev?.score ?? 0,
+    mistakes: p.mistakes ?? prev?.mistakes ?? 0,
+    progress: p.progress ?? prev?.progress ?? 0,
+    total: p.total ?? prev?.total ?? 0,
+    items: p.items ?? prev?.items ?? []
+  };
 }
 
 export default function PatientGameConnectPage({ patient, user, onBack }) {
@@ -42,10 +41,14 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
   const [latestAction, setLatestAction] = useState(null);
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState({ correct: 0, wrong: 0, autoMiss: 0, total: 0 });
+
   const channelRef = useRef(null);
   const sessionChannelRef = useRef(null);
   const statusRef = useRef('waiting');
-  useEffect(() => { statusRef.current = status; }, [status]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const monitor = useMemo(() => {
     const gameKey = latestAction?.game_key || session?.current_game_key || '-';
@@ -62,23 +65,20 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
     };
   }, [latestAction, session, stats, patient]);
 
- useEffect(() => {
-  if (!patient) return;
-  let isMounted = true;
+  useEffect(() => {
+    if (!patient) return;
+    let isMounted = true;
 
-  const cleanup = async () => {
-    if (!isMounted) return;
-
-    if (channelRef.current) {
-      await supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    if (sessionChannelRef.current) {
-      await supabase.removeChannel(sessionChannelRef.current);
-      sessionChannelRef.current = null;
-    }
-  };
-
+    const cleanup = async () => {
+      if (channelRef.current) {
+        await supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (sessionChannelRef.current) {
+        await supabase.removeChannel(sessionChannelRef.current);
+        sessionChannelRef.current = null;
+      }
+    };
 
     const createSession = async () => {
       setLoading(true);
@@ -88,6 +88,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
       setLatestAction(null);
       setEvents([]);
       setStats({ correct: 0, wrong: 0, autoMiss: 0, total: 0 });
+      setGameState(null);
       await cleanup();
 
       let inserted = null;
@@ -146,7 +147,8 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
           { event: 'INSERT', schema: 'public', table: 'game_actions', filter: `session_id=eq.${inserted.id}` },
           async (payload) => {
             const action = payload.new;
-            setGameState(prev => reduceGameState(prev, action));
+
+            setGameState((prev) => reduceGameState(prev, action));
             setLatestAction(action);
             setEvents((prev) => [action, ...prev].slice(0, 12));
             setStats((prev) => ({
@@ -168,7 +170,12 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
               current_game_key: action.game_key || prev?.current_game_key || null
             }));
 
-            const currentGame = action.game_key === 'single_color' ? 1 : action.game_key === 'multi_color' ? 1 : action.game_key === 'shapes_single' ? 2 : action.game_key === 'shapes_multi_color' ? 2 : action.game_key === 'thin_circle' ? 3 : 0;
+            const currentGame =
+              action.game_key === 'single_color' ? 1 :
+              action.game_key === 'multi_color' ? 1 :
+              action.game_key === 'shapes_single' ? 2 :
+              (action.game_key === 'shapes_multi' || action.game_key === 'shapes_multi_color') ? 2 :
+              action.game_key === 'thin_circle' ? 3 : 0;
 
             await supabase
               .from('game_sessions')
@@ -187,6 +194,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
     };
 
     createSession();
+
     return () => {
       isMounted = false;
       cleanup();
@@ -211,8 +219,18 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={onBack} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#E5E7EB', cursor: 'pointer' }}>返回病患列表</button>
-          <button onClick={handleReset} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#F59E0B', color: 'white', cursor: 'pointer' }}>重新產生配對碼</button>
+          <button
+            onClick={onBack}
+            style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#E5E7EB', cursor: 'pointer' }}
+          >
+            返回病患列表
+          </button>
+          <button
+            onClick={handleReset}
+            style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#F59E0B', color: 'white', cursor: 'pointer' }}
+          >
+            重新產生配對碼
+          </button>
         </div>
       </div>
 
@@ -252,10 +270,14 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
       </div>
 
       <div style={{ marginTop: '24px', border: '1px solid #E5E7EB', borderRadius: '16px', padding: '24px', background: '#FFFFFF' }}>
-           <div style={box}> <GameRenderer state={gameState}/></div>
+        <div style={box}>
+          <GameRenderer state={gameState} />
+        </div>
+
         <p style={{ color: '#6B7280', marginTop: '8px' }}>
-          這一版先顯示病患端的即時事件與狀態；收到 App 的 start / tap_correct / tap_wrong / auto_miss / end 後，畫面會立即更新。
+          這一版會直接依 App 傳來的 payload 畫出同步畫面；收到 start / tap_correct / tap_wrong / auto_miss / end 後，畫面會立即更新。
         </p>
+
         <div style={{ marginTop: '16px', display: 'grid', gap: '10px' }}>
           {events.length === 0 ? (
             <div style={{ padding: '20px', borderRadius: '12px', background: '#F9FAFB', color: '#6B7280' }}>
@@ -267,7 +289,9 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
                 <strong>{event.action_type}</strong>
                 <span style={{ color: '#6B7280' }}>{new Date(event.created_at).toLocaleTimeString()}</span>
               </div>
-              <div style={{ marginTop: '6px', color: '#374151' }}>game_key: {event.game_key || '-'} ／ level: {event.level_name || '-'}</div>
+              <div style={{ marginTop: '6px', color: '#374151' }}>
+                game_key: {event.game_key || '-'} ／ level: {event.level_name || '-'}
+              </div>
               <pre style={{ marginTop: '10px', padding: '12px', borderRadius: '8px', background: '#111827', color: '#F9FAFB', overflowX: 'auto', fontSize: '12px' }}>
 {JSON.stringify(event.payload || {}, null, 2)}
               </pre>
@@ -279,143 +303,72 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
   );
 }
 
-
 function GameRenderer({ state }) {
-  if (!state) return <div>等待遊戲開始...</div>
+  if (!state) return <div>等待遊戲開始...</div>;
 
-  if (state.type === "thin_circle") {
-    const percent = (state.progress / state.total) * 100
+  if (state.type === 'thin_circle') {
+    const total = state.total || 1;
+    const percent = Math.min((state.progress / total) * 100, 100);
 
     return (
-      <div style={{width:400,margin:"auto"}}>
-        <div style={{
-          height:30,
-          background:"#eee",
-          borderRadius:20,
-          overflow:"hidden"
-        }}>
-          <div style={{
-            height:"100%",
-            width:`${percent}%`,
-            background:"#3b82f6"
-          }}/>
+      <div style={{ width: 400, margin: 'auto' }}>
+        <div
+          style={{
+            height: 30,
+            background: '#eee',
+            borderRadius: 20,
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${percent}%`,
+              background: '#3b82f6',
+              transition: 'width 0.2s ease'
+            }}
+          />
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 10 }}>
+          {state.progress} / {state.total}
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div style={{
-      display:"grid",
-      gridTemplateColumns:"repeat(2,120px)",
-      gap:20,
-      justifyContent:"center"
-    }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2,120px)',
+        gap: 20,
+        justifyContent: 'center'
+      }}
+    >
       {state.items?.map((item, i) => (
-        <div key={i}
+        <div
+          key={i}
           style={{
-            width:120,
-            height:120,
-            borderRadius: item.type==="circle"?"50%":16,
-            background:item.color,
-            display:"flex",
-            alignItems:"center",
-            justifyContent:"center",
-            fontSize:40,
-            color:"white",
-            opacity: state.activeIndex===i?1:0.3,
-            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
+            width: 120,
+            height: 120,
+            borderRadius: item.type === 'circle' ? '50%' : 16,
+            background: item.color || '#ddd',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 40,
+            color: 'white',
+            opacity: state.activeIndex === i ? 1 : 0.3,
+            border: state.activeIndex === i ? '6px solid black' : '2px solid #ccc',
+            transition: 'all 0.2s ease'
           }}
         >
-          {item.type==="square" && "■"}
-          {item.type==="triangle" && "▲"}
-          {item.type==="diamond" && "◆"}
+          {item.type === 'square' && '■'}
+          {item.type === 'triangle' && '▲'}
+          {item.type === 'diamond' && '◆'}
+          {item.type === 'circle' && ''}
         </div>
       ))}
     </div>
-  )
-}
-function SingleColorBoard({ state }) {
-  const colors = ["red","yellow","blue","green"]
-
-  return (
-    <div style={{
-      display:"grid",
-      gridTemplateColumns:"repeat(2,120px)",
-      gap:20,
-      justifyContent:"center"
-    }}>
-      {colors.map((c,i)=>(
-        <div key={i}
-          style={{
-            width:120,
-            height:120,
-            borderRadius:"50%",
-            background:c,
-            opacity: state.activeIndex===i?1:0.3,
-            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-function ShapesBoard({ state }) {
-  const shapes = ["●","■","▲","◆"]
-  const colors = ["#ef4444","#eab308","#3b82f6","#22c55e"]
-
-  return (
-    <div style={{
-      display:"grid",
-      gridTemplateColumns:"repeat(2,120px)",
-      gap:20,
-      justifyContent:"center"
-    }}>
-      {shapes.map((s,i)=>(
-        <div key={i}
-          style={{
-            width:120,
-            height:120,
-            borderRadius:16,
-            background:colors[i],
-            display:"flex",
-            alignItems:"center",
-            justifyContent:"center",
-            fontSize:48,
-            color:"white",
-            opacity: state.activeIndex===i?1:0.3,
-            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
-          }}
-        >
-          {s}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ThinCircleBoard({ state }) {
-  const percent = Math.min((state.progress||0)*10,100)
-
-  return (
-    <div style={{width:400,margin:"auto"}}>
-      <div style={{
-        height:30,
-        background:"#eee",
-        borderRadius:20,
-        overflow:"hidden"
-      }}>
-        <div style={{
-          height:"100%",
-          width:`${percent}%`,
-          background:"#3b82f6"
-        }}/>
-      </div>
-
-      <div style={{textAlign:"center",marginTop:10}}>
-        progress {state.progress}
-      </div>
-    </div>
-  )
+  );
 }
