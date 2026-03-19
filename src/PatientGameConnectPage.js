@@ -19,7 +19,39 @@ const badgeColor = (status) => {
   return '#6B7280';
 };
 
+function reduceGameState(prev, action) {
+  const payload = action.payload || {}
+
+  let next = prev || {
+    type: action.game_key,
+    activeIndex: 0,
+    score: 0,
+    mistakes: 0,
+    progress: 0
+  }
+
+  if (payload.currentIndex !== undefined)
+    next.activeIndex = payload.currentIndex
+
+  if (payload.activeIndex !== undefined)
+    next.activeIndex = payload.activeIndex
+
+  if (payload.score !== undefined)
+    next.score = payload.score
+
+  if (payload.mistakes !== undefined)
+    next.mistakes = payload.mistakes
+
+  if (payload.progress !== undefined)
+    next.progress = payload.progress
+
+  next.type = action.game_key
+
+  return { ...next }
+}
+
 export default function PatientGameConnectPage({ patient, user, onBack }) {
+  const [gameState, setGameState] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -131,6 +163,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
           { event: 'INSERT', schema: 'public', table: 'game_actions', filter: `session_id=eq.${inserted.id}` },
           async (payload) => {
             const action = payload.new;
+            setGameState(prev => reduceGameState(prev, action));
             setLatestAction(action);
             setEvents((prev) => [action, ...prev].slice(0, 12));
             setStats((prev) => ({
@@ -236,7 +269,7 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
       </div>
 
       <div style={{ marginTop: '24px', border: '1px solid #E5E7EB', borderRadius: '16px', padding: '24px', background: '#FFFFFF' }}>
-        <h3 style={{ marginTop: 0, color: '#1F2937' }}>遊戲畫面同步區（事件版）</h3>
+           <div style={box}> <GameRenderer state={gameState}/></div>
         <p style={{ color: '#6B7280', marginTop: '8px' }}>
           這一版先顯示病患端的即時事件與狀態；收到 App 的 start / tap_correct / tap_wrong / auto_miss / end 後，畫面會立即更新。
         </p>
@@ -261,4 +294,111 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
       </div>
     </div>
   );
+}
+
+
+function GameRenderer({ state }) {
+  if (!state) return <div>等待遊戲開始...</div>
+
+  if (state.type === "single_color")
+    return <SingleColorBoard state={state} />
+
+  if (state.type === "multi_color")
+    return <SingleColorBoard state={state} />
+
+  if (state.type === "shapes_single")
+    return <ShapesBoard state={state} />
+
+  if (state.type === "shapes_multi")
+    return <ShapesBoard state={state} />
+
+  if (state.type === "thin_circle")
+    return <ThinCircleBoard state={state} />
+
+  return <div>未知遊戲</div>
+}
+
+function SingleColorBoard({ state }) {
+  const colors = ["red","yellow","blue","green"]
+
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"repeat(2,120px)",
+      gap:20,
+      justifyContent:"center"
+    }}>
+      {colors.map((c,i)=>(
+        <div key={i}
+          style={{
+            width:120,
+            height:120,
+            borderRadius:"50%",
+            background:c,
+            opacity: state.activeIndex===i?1:0.3,
+            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ShapesBoard({ state }) {
+  const shapes = ["●","■","▲","◆"]
+  const colors = ["#ef4444","#eab308","#3b82f6","#22c55e"]
+
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"repeat(2,120px)",
+      gap:20,
+      justifyContent:"center"
+    }}>
+      {shapes.map((s,i)=>(
+        <div key={i}
+          style={{
+            width:120,
+            height:120,
+            borderRadius:16,
+            background:colors[i],
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            fontSize:48,
+            color:"white",
+            opacity: state.activeIndex===i?1:0.3,
+            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
+          }}
+        >
+          {s}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ThinCircleBoard({ state }) {
+  const percent = Math.min((state.progress||0)*10,100)
+
+  return (
+    <div style={{width:400,margin:"auto"}}>
+      <div style={{
+        height:30,
+        background:"#eee",
+        borderRadius:20,
+        overflow:"hidden"
+      }}>
+        <div style={{
+          height:"100%",
+          width:`${percent}%`,
+          background:"#3b82f6"
+        }}/>
+      </div>
+
+      <div style={{textAlign:"center",marginTop:10}}>
+        progress {state.progress}
+      </div>
+    </div>
+  )
 }
