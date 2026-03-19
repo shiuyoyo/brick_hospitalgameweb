@@ -20,14 +20,25 @@ const badgeColor = (status) => {
 
 function reduceGameState(prev, action) {
   const p = action.payload || {};
+  const type = p.gameLayout || action.game_key || prev?.type || null;
+
+  let total = p.total ?? prev?.total ?? 0;
+
+  // 先對目前 App 已知畫面做 fallback
+  if (!total) {
+    if (type === 'single_color') total = 15;      // 3x5
+    else if (type === 'multi_color') total = 15;  // 先暫定 3x5
+    else if (type === 'thin_circle') total = 15;
+    else total = 4;
+  }
 
   return {
-    type: p.gameLayout || action.game_key || prev?.type || null,
+    type,
     activeIndex: p.activeIndex ?? p.currentIndex ?? prev?.activeIndex ?? 0,
     score: p.score ?? prev?.score ?? 0,
     mistakes: p.mistakes ?? prev?.mistakes ?? 0,
     progress: p.progress ?? prev?.progress ?? 0,
-    total: p.total ?? prev?.total ?? 0,
+    total,
     items: p.items ?? prev?.items ?? []
   };
 }
@@ -304,19 +315,23 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
 }
 
 function GameRenderer({ state }) {
-  if (!state) return <div>等待遊戲開始...</div>;
+  if (!state) {
+    return <div>等待遊戲開始...</div>;
+  }
 
+  // thin circle
   if (state.type === 'thin_circle') {
     const total = state.total || 1;
-    const percent = Math.min((state.progress / total) * 100, 100);
+    const progress = state.progress || 0;
+    const percent = Math.min((progress / total) * 100, 100);
 
     return (
-      <div style={{ width: 400, margin: 'auto' }}>
+      <div style={{ width: 500, margin: '0 auto' }}>
         <div
           style={{
-            height: 30,
-            background: '#eee',
-            borderRadius: 20,
+            height: 32,
+            background: '#E5E7EB',
+            borderRadius: 999,
             overflow: 'hidden'
           }}
         >
@@ -324,51 +339,108 @@ function GameRenderer({ state }) {
             style={{
               height: '100%',
               width: `${percent}%`,
-              background: '#3b82f6',
+              background: '#3B82F6',
               transition: 'width 0.2s ease'
             }}
           />
         </div>
-        <div style={{ textAlign: 'center', marginTop: 10 }}>
-          {state.progress} / {state.total}
+        <div style={{ textAlign: 'center', marginTop: 12, color: '#374151', fontWeight: 600 }}>
+          {progress} / {total}
         </div>
       </div>
     );
   }
 
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2,120px)',
-        gap: 20,
-        justifyContent: 'center'
-      }}
-    >
-      {state.items?.map((item, i) => (
-        <div
-          key={i}
-          style={{
-            width: 120,
-            height: 120,
-            borderRadius: item.type === 'circle' ? '50%' : 16,
-            background: item.color || '#ddd',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 40,
-            color: 'white',
-            opacity: state.activeIndex === i ? 1 : 0.3,
-            border: state.activeIndex === i ? '6px solid black' : '2px solid #ccc',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          {item.type === 'square' && '■'}
-          {item.type === 'triangle' && '▲'}
-          {item.type === 'diamond' && '◆'}
-          {item.type === 'circle' && ''}
+  // 單色 / 多色：先用 3x5 版對齊目前 App
+  if (state.type === 'single_color' || state.type === 'multi_color') {
+    const total = state.total || 15;
+    const activeIndex = state.activeIndex ?? 0;
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 110px)',
+          gap: 24,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '12px 0'
+        }}
+      >
+        {Array.from({ length: total }).map((_, i) => {
+          const isActive = i === activeIndex;
+
+          return (
+            <div
+              key={i}
+              style={{
+                width: 90,
+                height: 90,
+                borderRadius: '50%',
+                background: isActive ? '#F87171' : '#E5E7EB',
+                border: isActive ? '4px solid #DC2626' : '2px solid #CFCFCF',
+                boxShadow: isActive ? '0 0 0 3px rgba(239,68,68,0.15)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  // shapes 類：如果 App 還沒送 items，就先顯示提示
+  if (state.type === 'shapes_single' || state.type === 'shapes_multi' || state.type === 'shapes_multi_color') {
+    if (!state.items || state.items.length === 0) {
+      return (
+        <div style={{ color: '#6B7280', textAlign: 'center', padding: '32px 0' }}>
+          形狀遊戲目前尚未收到完整畫面資料。  
+          等 App 端把 shapes 的 payload 補完整後，Web 就能 1:1 顯示。
         </div>
-      ))}
+      );
+    }
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2,120px)',
+          gap: 20,
+          justifyContent: 'center'
+        }}
+      >
+        {state.items.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              width: 120,
+              height: 120,
+              borderRadius: item.type === 'circle' ? '50%' : 16,
+              background: item.color || '#ddd',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 40,
+              color: 'white',
+              opacity: state.activeIndex === i ? 1 : 0.3,
+              border: state.activeIndex === i ? '6px solid black' : '2px solid #ccc',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {item.type === 'square' && '■'}
+            {item.type === 'triangle' && '▲'}
+            {item.type === 'diamond' && '◆'}
+            {item.type === 'circle' && ''}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ color: '#6B7280', textAlign: 'center', padding: '24px 0' }}>
+      尚未支援的遊戲類型：{state.type || '-'}
     </div>
   );
 }
+
