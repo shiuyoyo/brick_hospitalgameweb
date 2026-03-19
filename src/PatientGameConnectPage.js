@@ -319,31 +319,77 @@ function GameRenderer({ state }) {
     return <div>等待遊戲開始...</div>;
   }
 
-  // thin circle
+  // ===== thin_circle：畫兩排圓點 + 紅點 =====
   if (state.type === 'thin_circle') {
-    const total = state.total || 1;
+    const total = state.total || 30; // 預設 30 顆
     const progress = state.progress || 0;
-    const percent = Math.min((progress / total) * 100, 100);
+    const topRowCount = Math.ceil(total / 2);
+    const bottomRowCount = total - topRowCount;
 
     return (
-      <div style={{ width: 500, margin: '0 auto' }}>
+      <div style={{ width: 760, margin: '0 auto', padding: '12px 0' }}>
         <div
           style={{
-            height: 32,
-            background: '#E5E7EB',
-            borderRadius: 999,
-            overflow: 'hidden'
+            borderTop: '6px solid #1D4ED8',
+            borderRight: '6px solid #1D4ED8',
+            borderBottom: '6px solid #1D4ED8',
+            borderRadius: '0 0 0 0',
+            padding: '20px 24px 28px 24px'
           }}
         >
           <div
             style={{
-              height: '100%',
-              width: `${percent}%`,
-              background: '#3B82F6',
-              transition: 'width 0.2s ease'
+              display: 'grid',
+              gridTemplateColumns: `repeat(${topRowCount}, 1fr)`,
+              gap: 12,
+              marginBottom: 20
             }}
-          />
+          >
+            {Array.from({ length: topRowCount }).map((_, i) => {
+              const isActive = progress === i;
+              return (
+                <div
+                  key={`top-${i}`}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: '50%',
+                    background: isActive ? '#F97316' : '#E5E7EB',
+                    margin: '0 auto',
+                    border: isActive ? '2px solid #EA580C' : '1px solid #D1D5DB'
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${bottomRowCount}, 1fr)`,
+              gap: 12
+            }}
+          >
+            {Array.from({ length: bottomRowCount }).map((_, i) => {
+              const absoluteIndex = topRowCount + i;
+              const isActive = progress === absoluteIndex;
+              return (
+                <div
+                  key={`bottom-${i}`}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: '50%',
+                    background: isActive ? '#F97316' : '#E5E7EB',
+                    margin: '0 auto',
+                    border: isActive ? '2px solid #EA580C' : '1px solid #D1D5DB'
+                  }}
+                />
+              );
+            })}
+          </div>
         </div>
+
         <div style={{ textAlign: 'center', marginTop: 12, color: '#374151', fontWeight: 600 }}>
           {progress} / {total}
         </div>
@@ -351,7 +397,79 @@ function GameRenderer({ state }) {
     );
   }
 
-  // 單色 / 多色：先用 3x5 版對齊目前 App
+  // ===== shapes_single：3x5 圖形矩陣 =====
+  if (state.type === 'shapes_single') {
+    const total = state.total || 15;
+    const activeIndex = state.activeIndex ?? 0;
+
+    // 先用 fallback：依欄位重複圖形
+    const fallbackShapes = ['hexagon', 'rect', 'triangle', 'square', 'circle'];
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 120px)',
+          gap: 22,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '12px 0'
+        }}
+      >
+        {Array.from({ length: total }).map((_, i) => {
+          const col = i % 5;
+          const shapeType = state.items?.[i]?.type || fallbackShapes[col];
+          const isActive = i === activeIndex;
+
+          return (
+            <ShapeCell
+              key={i}
+              type={shapeType}
+              active={isActive}
+              color={isActive ? '#F87171' : '#FFFFFF'}
+              stroke={isActive ? '#DC2626' : '#D1D5DB'}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ===== shapes_multi / shapes_multi_color：先保留 items 畫法 =====
+  if (state.type === 'shapes_multi' || state.type === 'shapes_multi_color') {
+    if (!state.items || state.items.length === 0) {
+      return (
+        <div style={{ color: '#6B7280', textAlign: 'center', padding: '32px 0' }}>
+          尚未收到多色形狀的完整畫面資料。
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 120px)',
+          gap: 22,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '12px 0'
+        }}
+      >
+        {state.items.map((item, i) => (
+          <ShapeCell
+            key={i}
+            type={item.type}
+            active={state.activeIndex === i}
+            color={item.color || '#FFFFFF'}
+            stroke={state.activeIndex === i ? '#111827' : '#D1D5DB'}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // ===== single_color / multi_color：15 顆圓 =====
   if (state.type === 'single_color' || state.type === 'multi_color') {
     const total = state.total || 15;
     const activeIndex = state.activeIndex ?? 0;
@@ -369,7 +487,6 @@ function GameRenderer({ state }) {
       >
         {Array.from({ length: total }).map((_, i) => {
           const isActive = i === activeIndex;
-
           return (
             <div
               key={i}
@@ -389,54 +506,6 @@ function GameRenderer({ state }) {
     );
   }
 
-  // shapes 類：如果 App 還沒送 items，就先顯示提示
-  if (state.type === 'shapes_single' || state.type === 'shapes_multi' || state.type === 'shapes_multi_color') {
-    if (!state.items || state.items.length === 0) {
-      return (
-        <div style={{ color: '#6B7280', textAlign: 'center', padding: '32px 0' }}>
-          形狀遊戲目前尚未收到完整畫面資料。  
-          等 App 端把 shapes 的 payload 補完整後，Web 就能 1:1 顯示。
-        </div>
-      );
-    }
-
-    return (
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2,120px)',
-          gap: 20,
-          justifyContent: 'center'
-        }}
-      >
-        {state.items.map((item, i) => (
-          <div
-            key={i}
-            style={{
-              width: 120,
-              height: 120,
-              borderRadius: item.type === 'circle' ? '50%' : 16,
-              background: item.color || '#ddd',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 40,
-              color: 'white',
-              opacity: state.activeIndex === i ? 1 : 0.3,
-              border: state.activeIndex === i ? '6px solid black' : '2px solid #ccc',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {item.type === 'square' && '■'}
-            {item.type === 'triangle' && '▲'}
-            {item.type === 'diamond' && '◆'}
-            {item.type === 'circle' && ''}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <div style={{ color: '#6B7280', textAlign: 'center', padding: '24px 0' }}>
       尚未支援的遊戲類型：{state.type || '-'}
@@ -444,3 +513,96 @@ function GameRenderer({ state }) {
   );
 }
 
+function ShapeCell({ type, active, color, stroke }) {
+  const wrapStyle = {
+    width: 110,
+    height: 110,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: active ? 1 : 0.95,
+    transition: 'all 0.2s ease'
+  };
+
+  const svgStyle = {
+    width: 96,
+    height: 96,
+    overflow: 'visible'
+  };
+
+  const fill = color || '#FFFFFF';
+  const border = stroke || '#D1D5DB';
+
+  if (type === 'circle') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <circle cx="50" cy="50" r="38" fill={fill} stroke={border} strokeWidth="3" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (type === 'triangle') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <polygon points="50,10 90,85 10,85" fill={fill} stroke={border} strokeWidth="3" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (type === 'square') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <rect x="15" y="15" width="70" height="70" fill={fill} stroke={border} strokeWidth="3" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (type === 'rect') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <rect x="25" y="10" width="50" height="80" fill={fill} stroke={border} strokeWidth="3" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (type === 'hexagon') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <polygon
+            points="50,8 84,28 84,72 50,92 16,72 16,28"
+            fill={fill}
+            stroke={border}
+            strokeWidth="3"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  if (type === 'diamond') {
+    return (
+      <div style={wrapStyle}>
+        <svg viewBox="0 0 100 100" style={svgStyle}>
+          <polygon points="50,8 88,50 50,92 12,50" fill={fill} stroke={border} strokeWidth="3" />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <div style={wrapStyle}>
+      <svg viewBox="0 0 100 100" style={svgStyle}>
+        <rect x="15" y="15" width="70" height="70" fill={fill} stroke={border} strokeWidth="3" />
+      </svg>
+    </div>
+  );
+}
