@@ -20,26 +20,93 @@ const badgeColor = (status) => {
 
 function reduceGameState(prev, action) {
   const p = action.payload || {};
-  const type = p.gameLayout || action.game_key || prev?.type || null;
+  const nextType = p.gameLayout || action.game_key || prev?.type || null;
 
-  let total = p.total ?? prev?.total ?? 0;
+  const typeChanged = prev?.type && nextType && prev.type !== nextType;
 
-  // 先對目前 App 已知畫面做 fallback
+  let baseState;
+
+  if (typeChanged) {
+    if (nextType === 'single_color' || nextType === 'multi_color') {
+      baseState = {
+        type: nextType,
+        activeIndex: 0,
+        score: 0,
+        mistakes: 0,
+        progress: 0,
+        total: 15,
+        items: []
+      };
+    } else if (nextType === 'shapes_single') {
+      baseState = {
+        type: nextType,
+        activeIndex: 0,
+        score: 0,
+        mistakes: 0,
+        progress: 0,
+        total: 15,
+        items: []
+      };
+    } else if (nextType === 'shapes_multi' || nextType === 'shapes_multi_color') {
+      baseState = {
+        type: nextType,
+        activeIndex: 0,
+        score: 0,
+        mistakes: 0,
+        progress: 0,
+        total: 15,
+        items: []
+      };
+    } else if (nextType === 'thin_circle') {
+      baseState = {
+        type: nextType,
+        activeIndex: 0,
+        score: 0,
+        mistakes: 0,
+        progress: 0,
+        total: 30,
+        items: []
+      };
+    } else {
+      baseState = {
+        type: nextType,
+        activeIndex: 0,
+        score: 0,
+        mistakes: 0,
+        progress: 0,
+        total: 0,
+        items: []
+      };
+    }
+  } else {
+    baseState = prev || {
+      type: nextType,
+      activeIndex: 0,
+      score: 0,
+      mistakes: 0,
+      progress: 0,
+      total: 0,
+      items: []
+    };
+  }
+
+  let total = p.total ?? baseState.total ?? 0;
+
   if (!total) {
-    if (type === 'single_color') total = 15;      // 3x5
-    else if (type === 'multi_color') total = 15;  // 先暫定 3x5
-    else if (type === 'thin_circle') total = 15;
-    else total = 4;
+    if (nextType === 'single_color' || nextType === 'multi_color') total = 15;
+    else if (nextType === 'shapes_single' || nextType === 'shapes_multi' || nextType === 'shapes_multi_color') total = 15;
+    else if (nextType === 'thin_circle') total = 30;
+    else total = 0;
   }
 
   return {
-    type,
-    activeIndex: p.activeIndex ?? p.currentIndex ?? prev?.activeIndex ?? 0,
-    score: p.score ?? prev?.score ?? 0,
-    mistakes: p.mistakes ?? prev?.mistakes ?? 0,
-    progress: p.progress ?? prev?.progress ?? 0,
+    type: nextType,
+    activeIndex: p.activeIndex ?? p.currentIndex ?? baseState.activeIndex ?? 0,
+    score: p.score ?? baseState.score ?? 0,
+    mistakes: p.mistakes ?? baseState.mistakes ?? 0,
+    progress: p.progress ?? baseState.progress ?? 0,
     total,
-    items: p.items ?? prev?.items ?? []
+    items: p.items ?? baseState.items ?? []
   };
 }
 
@@ -319,10 +386,11 @@ function GameRenderer({ state }) {
     return <div>等待遊戲開始...</div>;
   }
 
-  // ===== thin_circle：畫兩排圓點 + 紅點 =====
+  // ===== thin_circle：兩排圓點 + 一顆紅點 =====
   if (state.type === 'thin_circle') {
-    const total = state.total || 30; // 預設 30 顆
-    const progress = state.progress || 0;
+    const total = state.total || 30;
+    const progress = state.progress ?? state.activeIndex ?? 0;
+
     const topRowCount = Math.ceil(total / 2);
     const bottomRowCount = total - topRowCount;
 
@@ -333,7 +401,6 @@ function GameRenderer({ state }) {
             borderTop: '6px solid #1D4ED8',
             borderRight: '6px solid #1D4ED8',
             borderBottom: '6px solid #1D4ED8',
-            borderRadius: '0 0 0 0',
             padding: '20px 24px 28px 24px'
           }}
         >
@@ -397,12 +464,10 @@ function GameRenderer({ state }) {
     );
   }
 
-  // ===== shapes_single：3x5 圖形矩陣 =====
+  // ===== shapes_single：固定 3x5 =====
   if (state.type === 'shapes_single') {
-    const total = state.total || 15;
     const activeIndex = state.activeIndex ?? 0;
-
-    // 先用 fallback：依欄位重複圖形
+    const total = 15;
     const fallbackShapes = ['hexagon', 'rect', 'triangle', 'square', 'circle'];
 
     return (
@@ -435,15 +500,11 @@ function GameRenderer({ state }) {
     );
   }
 
-  // ===== shapes_multi / shapes_multi_color：先保留 items 畫法 =====
+  // ===== shapes_multi / shapes_multi_color：先固定 3x5 fallback =====
   if (state.type === 'shapes_multi' || state.type === 'shapes_multi_color') {
-    if (!state.items || state.items.length === 0) {
-      return (
-        <div style={{ color: '#6B7280', textAlign: 'center', padding: '32px 0' }}>
-          尚未收到多色形狀的完整畫面資料。
-        </div>
-      );
-    }
+    const activeIndex = state.activeIndex ?? 0;
+    const total = 15;
+    const fallbackShapes = ['hexagon', 'rect', 'triangle', 'square', 'circle'];
 
     return (
       <div
@@ -456,15 +517,23 @@ function GameRenderer({ state }) {
           padding: '12px 0'
         }}
       >
-        {state.items.map((item, i) => (
-          <ShapeCell
-            key={i}
-            type={item.type}
-            active={state.activeIndex === i}
-            color={item.color || '#FFFFFF'}
-            stroke={state.activeIndex === i ? '#111827' : '#D1D5DB'}
-          />
-        ))}
+        {Array.from({ length: total }).map((_, i) => {
+          const col = i % 5;
+          const item = state.items?.[i];
+          const shapeType = item?.type || fallbackShapes[col];
+          const color = item?.color || '#FFFFFF';
+          const isActive = i === activeIndex;
+
+          return (
+            <ShapeCell
+              key={i}
+              type={shapeType}
+              active={isActive}
+              color={isActive ? color : '#FFFFFF'}
+              stroke={isActive ? '#111827' : '#D1D5DB'}
+            />
+          );
+        })}
       </div>
     );
   }
