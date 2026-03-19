@@ -20,34 +20,17 @@ const badgeColor = (status) => {
 };
 
 function reduceGameState(prev, action) {
-  const payload = action.payload || {}
+  const p = action.payload || {}
 
-  let next = prev || {
-    type: action.game_key,
-    activeIndex: 0,
-    score: 0,
-    mistakes: 0,
-    progress: 0
+  return {
+    type: p.gameLayout,
+    activeIndex: p.activeIndex,
+    score: p.score,
+    mistakes: p.mistakes,
+    progress: p.progress,
+    total: p.total,
+    items: p.items
   }
-
-  if (payload.currentIndex !== undefined)
-    next.activeIndex = payload.currentIndex
-
-  if (payload.activeIndex !== undefined)
-    next.activeIndex = payload.activeIndex
-
-  if (payload.score !== undefined)
-    next.score = payload.score
-
-  if (payload.mistakes !== undefined)
-    next.mistakes = payload.mistakes
-
-  if (payload.progress !== undefined)
-    next.progress = payload.progress
-
-  next.type = action.game_key
-
-  return { ...next }
 }
 
 export default function PatientGameConnectPage({ patient, user, onBack }) {
@@ -300,24 +283,58 @@ export default function PatientGameConnectPage({ patient, user, onBack }) {
 function GameRenderer({ state }) {
   if (!state) return <div>等待遊戲開始...</div>
 
-  if (state.type === "single_color")
-    return <SingleColorBoard state={state} />
+  if (state.type === "thin_circle") {
+    const percent = (state.progress / state.total) * 100
 
-  if (state.type === "multi_color")
-    return <SingleColorBoard state={state} />
+    return (
+      <div style={{width:400,margin:"auto"}}>
+        <div style={{
+          height:30,
+          background:"#eee",
+          borderRadius:20,
+          overflow:"hidden"
+        }}>
+          <div style={{
+            height:"100%",
+            width:`${percent}%`,
+            background:"#3b82f6"
+          }}/>
+        </div>
+      </div>
+    )
+  }
 
-  if (state.type === "shapes_single")
-    return <ShapesBoard state={state} />
-
-  if (state.type === "shapes_multi")
-    return <ShapesBoard state={state} />
-
-  if (state.type === "thin_circle")
-    return <ThinCircleBoard state={state} />
-
-  return <div>未知遊戲</div>
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"repeat(2,120px)",
+      gap:20,
+      justifyContent:"center"
+    }}>
+      {state.items?.map((item, i) => (
+        <div key={i}
+          style={{
+            width:120,
+            height:120,
+            borderRadius: item.type==="circle"?"50%":16,
+            background:item.color,
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            fontSize:40,
+            color:"white",
+            opacity: state.activeIndex===i?1:0.3,
+            border: state.activeIndex===i?"6px solid black":"2px solid #ccc"
+          }}
+        >
+          {item.type==="square" && "■"}
+          {item.type==="triangle" && "▲"}
+          {item.type==="diamond" && "◆"}
+        </div>
+      ))}
+    </div>
+  )
 }
-
 function SingleColorBoard({ state }) {
   const colors = ["red","yellow","blue","green"]
 
