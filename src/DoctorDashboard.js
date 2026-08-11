@@ -24,6 +24,9 @@ const DoctorDashboard = ({ user, onLogout }) => {
   const [doctorNotes, setDoctorNotes] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteHistory, setNoteHistory] = useState([]);
+  const [selectedRehabSession, setSelectedRehabSession] = useState(null);
+  const [rehabActions, setRehabActions] = useState([]);
+  const [rehabActionsLoading, setRehabActionsLoading] = useState(false);
 
   // 動作障礙等級說明
   const disabilityLevels = [
@@ -43,10 +46,36 @@ const DoctorDashboard = ({ user, onLogout }) => {
     thin_circle: '細圓環',
   };
 
+  const STATUS_LABELS = {
+    waiting: '等待連線',
+    connected: '已連線',
+    playing: '遊戲中',
+    ended: '已完成',
+  };
+
+  const statusColor = (status) => {
+    if (status === 'waiting') return '#F59E0B';
+    if (status === 'connected') return '#0EA5E9';
+    if (status === 'playing') return '#10B981';
+    if (status === 'ended') return '#6B7280';
+    return '#6B7280';
+  };
+
+  const actionLabel = (type) => {
+    if (type === 'tap_correct') return '✅ 正確';
+    if (type === 'tap_wrong') return '❌ 錯誤';
+    if (type === 'auto_miss') return '⏱ 超時';
+    if (type === 'start') return '▶ 開始';
+    if (type === 'end') return '⏹ 結束';
+    return type;
+  };
+
   // 載入病患復健資料
   const loadRehabData = useCallback(async (patient) => {
     if (!patient) return;
     setRehabLoading(true);
+    setSelectedRehabSession(null);
+    setRehabActions([]);
     try {
       const patientId = patient.id;
       const username = patient.username;
@@ -119,6 +148,17 @@ const DoctorDashboard = ({ user, onLogout }) => {
       setNoteHistory([]);
     }
   };
+
+  const loadRehabActions = useCallback(async (sessionId) => {
+    setRehabActionsLoading(true);
+    const { data } = await supabase
+      .from('game_actions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+    setRehabActions(data || []);
+    setRehabActionsLoading(false);
+  }, []);
 
   // 儲存醫師備註
   const saveDoctorNote = async () => {
@@ -1344,6 +1384,133 @@ const DoctorDashboard = ({ user, onLogout }) => {
                   <p style={{ color: '#9CA3AF', textAlign: 'center', padding: '40px' }}>無資料</p>
                 )}
               </div>
+            </div>
+
+            {/* ===== 訓練記錄列表（同病人端） ===== */}
+            <div style={chartCardStyle}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1F2937', marginBottom: '16px' }}>
+                訓練記錄
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {rehabSessions.map((s) => {
+                  const st = rehabSessionStats[s.id] || { correct: 0, wrong: 0, autoMiss: 0, total: 0 };
+                  const acc =
+                    st.correct + st.wrong > 0
+                      ? Math.round((st.correct / (st.correct + st.wrong)) * 100)
+                      : null;
+                  const color = statusColor(s.status);
+                  const isSelected = selectedRehabSession?.id === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        setSelectedRehabSession(s);
+                        loadRehabActions(s.id);
+                      }}
+                      style={{
+                        backgroundColor: '#F9FAFB',
+                        borderRadius: '10px',
+                        padding: '16px',
+                        cursor: 'pointer',
+                        border: isSelected ? '2px solid #4F46E5' : '2px solid transparent',
+                        transition: 'border-color 0.15s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <span style={{
+                            display: 'inline-block',
+                            backgroundColor: color + '20',
+                            color: color,
+                            borderRadius: '6px',
+                            padding: '2px 10px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                          }}>
+                            {STATUS_LABELS[s.status] || s.status}
+                          </span>
+                          <span style={{ marginLeft: '10px', fontSize: '14px', color: '#1F2937', fontWeight: '600' }}>
+                            {s.current_game_key
+                              ? GAME_KEY_LABELS[s.current_game_key] || s.current_game_key
+                              : '配對碼：' + s.code}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                          {s.created_at ? new Date(s.created_at).toLocaleString('zh-TW') : ''}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', fontSize: '13px', color: '#374151' }}>
+                        <span>✅ 正確 {st.correct}</span>
+                        <span>❌ 錯誤 {st.wrong}</span>
+                        <span>⏱ 超時 {st.autoMiss}</span>
+                        {acc !== null && <span style={{ fontWeight: '700', color: '#4F46E5' }}>正確率 {acc}%</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 詳細動作記錄 */}
+              {selectedRehabSession && (
+                <div style={{
+                  backgroundColor: 'white',
+                  borderRadius: '10px',
+                  padding: '20px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                  marginTop: '20px',
+                  border: '1px solid #E5E7EB',
+                }}>
+                  <p style={{ fontSize: '15px', fontWeight: '700', color: '#1F2937', marginBottom: '4px' }}>
+                    詳細動作記錄
+                  </p>
+                  <p style={{ fontSize: '13px', color: '#6B7280', marginBottom: '14px' }}>
+                    配對碼：{selectedRehabSession.code}｜
+                    遊戲：{GAME_KEY_LABELS[selectedRehabSession.current_game_key] || selectedRehabSession.current_game_key || '—'}｜
+                    時間：{selectedRehabSession.created_at ? new Date(selectedRehabSession.created_at).toLocaleString('zh-TW') : ''}
+                  </p>
+                  {rehabActionsLoading ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: '#6B7280' }}>載入中...</div>
+                  ) : rehabActions.length === 0 ? (
+                    <div style={{ color: '#9CA3AF', fontSize: '14px' }}>此場次無動作記錄</div>
+                  ) : (
+                    <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                      {rehabActions.map((a, i) => (
+                        <div
+                          key={a.id || i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '8px 0',
+                            borderBottom: '1px solid #F3F4F6',
+                            color:
+                              a.action_type === 'tap_correct'
+                                ? '#10B981'
+                                : a.action_type === 'tap_wrong'
+                                ? '#EF4444'
+                                : a.action_type === 'auto_miss'
+                                ? '#F59E0B'
+                                : '#6B7280',
+                          }}
+                        >
+                          <span style={{ minWidth: '70px', fontWeight: '600' }}>{actionLabel(a.action_type)}</span>
+                          {a.level_name && (
+                            <span style={{ color: '#374151', fontSize: '13px' }}>關卡：{a.level_name}</span>
+                          )}
+                          {a.game_key && (
+                            <span style={{ color: '#6B7280', fontSize: '12px' }}>
+                              {GAME_KEY_LABELS[a.game_key] || a.game_key}
+                            </span>
+                          )}
+                          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#9CA3AF' }}>
+                            {a.created_at ? new Date(a.created_at).toLocaleTimeString('zh-TW') : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ===== 醫師評估備註 ===== */}
