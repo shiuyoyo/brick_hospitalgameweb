@@ -107,9 +107,6 @@ const JimuApp = () => {
           }
           
           const expectedPassword = userProfile.username.slice(-6); // 身分證後六碼
-          console.log('🔑 一般用戶密碼驗證:');
-          console.log('   - 輸入密碼:', password);
-          console.log('   - 期望密碼:', expectedPassword);
           
           if (password === expectedPassword) {
             console.log('✅ 一般用戶登入成功');
@@ -131,7 +128,7 @@ const JimuApp = () => {
             setLoginData({ username: '', password: '' });
           } else {
             console.log('❌ 一般用戶密碼錯誤');
-            setMessage(`密碼錯誤，請輸入身分證後六碼（期望：${expectedPassword}）`);
+            setMessage('帳號或密碼錯誤；請改用共用登入入口。');
           }
         } else {
           // === 醫生用戶：使用舊的登入邏輯 ===
@@ -478,6 +475,9 @@ const JimuApp = () => {
                 flexDirection: 'column',
                 justifyContent: 'center'
               }}>
+                <a href="/shared" style={{ display: 'block', padding: '14px', marginBottom: '20px', textAlign: 'center', borderRadius: '10px', background: '#062549', color: '#f5ce75', fontWeight: 700 }}>
+                  使用 Healthy-System 共用帳號登入積木復健 →
+                </a>
                 {message && (
                   <div style={styles.errorMessage}>
                     {message}
