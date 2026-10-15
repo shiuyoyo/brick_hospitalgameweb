@@ -83,6 +83,7 @@ function DoctorHome({ user, profile }) {
   const [runs, setRuns] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [lastPairingEnded, setLastPairingEnded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -102,6 +103,7 @@ function DoctorHome({ user, profile }) {
   useEffect(() => {
     setSession(null);
     setActions([]);
+    setLastPairingEnded(false);
     setShoulder([]);
     setRuns([]);
     if (!selected) return;
@@ -109,29 +111,57 @@ function DoctorHome({ user, profile }) {
     supabase.from('shoulder_training_entries').select('id,movement_no,created_at,completed_reps,target_reps,pain_score')
       .eq('participant_id', selected.id).order('created_at', { ascending: false }).limit(5)
       .then(({ data }) => { if (active) setShoulder(data || []); });
-    supabase.from('brick_training_runs').select('id,game_key,level_name,started_at,status,correct_count,wrong_count,missed_count')
+    supabase.from('brick_training_runs').select('id,game_key,level_name,started_at,ended_at,status,correct_count,wrong_count,missed_count')
       .eq('participant_id', selected.id).order('started_at', { ascending: false }).limit(8)
       .then(({ data }) => { if (active) setRuns(data || []); });
-    supabase.from('brick_game_sessions').select('id,code,status,current_game_key,created_at')
+    supabase.from('brick_game_sessions').select('id,code,status,current_game_key,created_at,expires_at,doctor_id')
       .eq('participant_id', selected.id).in('status', ['waiting', 'connected', 'playing'])
       .order('created_at', { ascending: false }).limit(1)
-      .then(({ data }) => { if (active && data?.[0]) setSession(data[0]); });
+      .then(async ({ data }) => {
+        const candidate = data?.[0];
+        if (!active || !candidate) return;
+        if (new Date(candidate.expires_at) <= new Date()) {
+          setLastPairingEnded(true);
+          return;
+        }
+        if (candidate.status === 'playing') {
+          const { data: completed } = await supabase.from('brick_training_runs')
+            .select('id').eq('participant_id', selected.id).eq('status', 'completed')
+            .eq('game_key', candidate.current_game_key).gte('ended_at', candidate.created_at).limit(1);
+          if (!active) return;
+          if (completed?.length) {
+            setLastPairingEnded(true);
+            if (candidate.doctor_id === user.id) {
+              await supabase.from('brick_game_sessions').update({ status: 'ended' })
+                .eq('id', candidate.id).eq('status', 'playing');
+            }
+            return;
+          }
+        }
+        setSession(candidate);
+      });
     return () => { active = false; };
-  }, [selected]);
+  }, [selected, user.id]);
 
   const loadActions = useCallback(async sessionId => {
     const { data } = await supabase.from('brick_game_actions')
-      .select('id,game_key,level_name,action_type,created_at')
+      .select('id,game_key,level_name,action_type,payload,created_at')
       .eq('session_id', sessionId).order('created_at', { ascending: false }).limit(50);
     setActions(data || []);
+    if (data?.some(action => action.action_type === 'end')) {
+      setSession(previous => previous ? { ...previous, status: 'ended' } : previous);
+      setLastPairingEnded(true);
+    }
   }, []);
 
   useEffect(() => {
     if (!session?.id) return;
     loadActions(session.id);
     const channel = supabase.channel(`brick-${session.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'brick_game_actions', filter: `session_id=eq.${session.id}` }, payload =>
-        setActions(previous => [payload.new, ...previous].slice(0, 50)))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'brick_game_actions', filter: `session_id=eq.${session.id}` }, payload => {
+        setActions(previous => [payload.new, ...previous].slice(0, 50));
+        if (payload.new.action_type === 'end') setLastPairingEnded(true);
+      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'brick_game_sessions', filter: `id=eq.${session.id}` }, payload =>
         setSession(previous => ({ ...previous, ...payload.new })))
       .subscribe();
@@ -146,7 +176,7 @@ function DoctorHome({ user, profile }) {
         const { data, error: createError } = await supabase.from('brick_game_sessions')
           .insert({ participant_id: selected.id, doctor_id: user.id, code: randomCode() })
           .select('id,code,status,current_game_key,created_at').single();
-        if (!createError && data) { setSession(data); setActions([]); return; }
+        if (!createError && data) { setSession(data); setActions([]); setLastPairingEnded(false); return; }
       }
       setError('無法建立配對碼，請確認你已被指派照護這位病人。');
     } finally { setBusy(false); }
@@ -155,7 +185,7 @@ function DoctorHome({ user, profile }) {
   const correct = actions.filter(action => action.action_type === 'tap_correct').length;
   const wrong = actions.filter(action => action.action_type === 'tap_wrong').length;
   const missed = actions.filter(action => action.action_type === 'auto_miss').length;
-  return <div className="content"><div className="welcome"><span className="eyebrow">CLINICIAN WORKSPACE</span><h1>病人練習總覽</h1><p>選擇病人、產生連線碼，並即時查看積木練習表現。</p></div>{error && <div className="error" role="alert">{error}</div>}<div className="doctor-layout"><section className="panel patient-list"><h2>我的病人 <small>{patients.length} 位</small></h2>{patients.length ? patients.map(patient => <button key={patient.id} className={`patient-choice ${selected?.id === patient.id ? 'active' : ''}`} onClick={() => setSelected(patient)}><span>{patient.name || '未命名病人'}</span><small>{patient.participant_code}</small></button>) : <p>目前沒有被指派的病人。</p>}</section><div className="detail-stack">{selected ? <><section className="panel hero-panel"><div><span className="eyebrow">SELECTED PATIENT</span><h2>{selected.name || '未命名病人'}</h2><p>{selected.participant_code}</p></div>{profile.role === 'doctor_all' ? <span className="eyebrow">全病人唯讀帳號；配對請使用受指派醫師帳號</span> : <button className="primary" onClick={createSession} disabled={busy}>{busy ? '建立中…' : '建立配對碼'}</button>}</section><div className="grid-two"><section className="panel"><h2>即時連線</h2>{session ? <><div className="pair-code">{session.code}</div><p>狀態：{session.status}　關卡：{session.current_game_key || '尚未開始'}</p><div className="metric-row"><span>正確 <strong>{correct}</strong></span><span>錯誤 <strong>{wrong}</strong></span><span>逾時 <strong>{missed}</strong></span></div></> : <p>按「建立配對碼」後，請病人在 App 輸入六位數代碼。</p>}</section><section className="panel"><h2>五十肩近期表現</h2>{shoulder.length ? shoulder.map(item => <div className="session-row" key={item.id}><time>{new Date(item.created_at).toLocaleDateString('zh-TW')}</time><span>動作 {item.movement_no}　{item.completed_reps}/{item.target_reps} 下</span><strong>疼痛 {item.pain_score ?? '未填'}</strong></div>) : <p>目前尚無可顯示的五十肩訓練結果。</p>}</section></div><section className="panel"><h2>最近積木訓練</h2>{runs.length ? runs.map(run => <div className="session-row" key={run.id}><time>{new Date(run.started_at).toLocaleString('zh-TW')}</time><span>{run.level_name || run.game_key} · {run.status === 'completed' ? '已完成' : '進行中'}</span><strong>正確 {run.correct_count} / 錯誤 {run.wrong_count} / 逾時 {run.missed_count}</strong></div>) : <p>目前沒有已上傳的積木訓練。</p>}</section><section className="panel"><h2>同步遊戲畫面</h2><LiveGameBoard action={actions[0]} status={session?.status} /></section><section className="panel"><h2>即時事件</h2>{actions.length ? actions.map(action => <div className="session-row" key={action.id}><time>{new Date(action.created_at).toLocaleTimeString('zh-TW')}</time><span>{action.game_key}／{action.level_name || '練習'}</span><strong>{action.action_type}</strong></div>) : <p>等待 App 傳入練習事件。</p>}</section></> : <section className="panel empty-state">請先從左側選擇一位病人。</section>}</div></div></div>;
+  return <div className="content"><div className="welcome"><span className="eyebrow">CLINICIAN WORKSPACE</span><h1>病人練習總覽</h1><p>選擇病人、產生連線碼，並即時查看積木練習表現。</p></div>{error && <div className="error" role="alert">{error}</div>}<div className="doctor-layout"><section className="panel patient-list"><h2>我的病人 <small>{patients.length} 位</small></h2>{patients.length ? patients.map(patient => <button key={patient.id} className={`patient-choice ${selected?.id === patient.id ? 'active' : ''}`} onClick={() => setSelected(patient)}><span>{patient.name || '未命名病人'}</span><small>{patient.participant_code}</small></button>) : <p>目前沒有被指派的病人。</p>}</section><div className="detail-stack">{selected ? <><section className="panel hero-panel"><div><span className="eyebrow">SELECTED PATIENT</span><h2>{selected.name || '未命名病人'}</h2><p>{selected.participant_code}</p></div>{profile.role === 'doctor_all' ? <span className="eyebrow">全病人唯讀帳號；配對請使用受指派醫師帳號</span> : <button className="primary" onClick={createSession} disabled={busy}>{busy ? '建立中…' : '建立配對碼'}</button>}</section><div className="grid-two"><section className="panel"><h2>即時連線</h2>{session?.status === 'ended' ? <p>上一局已結束。請按「建立配對碼」開始新的一局。</p> : session ? <><div className="pair-code">{session.code}</div><p>狀態：{session.status}　關卡：{session.current_game_key || '尚未開始'}</p><div className="metric-row"><span>正確 <strong>{correct}</strong></span><span>錯誤 <strong>{wrong}</strong></span><span>逾時 <strong>{missed}</strong></span></div></> : <p>{lastPairingEnded ? '上一局已結束。' : ''}按「建立配對碼」後，請病人在 App 輸入六位數代碼。</p>}</section><section className="panel"><h2>五十肩近期表現</h2>{shoulder.length ? shoulder.map(item => <div className="session-row" key={item.id}><time>{new Date(item.created_at).toLocaleDateString('zh-TW')}</time><span>動作 {item.movement_no}　{item.completed_reps}/{item.target_reps} 下</span><strong>疼痛 {item.pain_score ?? '未填'}</strong></div>) : <p>目前尚無可顯示的五十肩訓練結果。</p>}</section></div><section className="panel"><h2>最近積木訓練</h2>{runs.length ? runs.map(run => <div className="session-row" key={run.id}><time>{new Date(run.started_at).toLocaleString('zh-TW')}</time><span>{run.level_name || run.game_key} · {run.status === 'completed' ? '已完成' : '進行中'}</span><strong>正確 {run.correct_count} / 錯誤 {run.wrong_count} / 逾時 {run.missed_count}</strong></div>) : <p>目前沒有已上傳的積木訓練。</p>}</section><section className="panel"><h2>同步遊戲畫面</h2><LiveGameBoard action={actions[0]} status={session?.status} /></section><section className="panel"><h2>即時事件</h2>{actions.length ? actions.map(action => <div className="session-row" key={action.id}><time>{new Date(action.created_at).toLocaleTimeString('zh-TW')}</time><span>{action.game_key}／{action.level_name || '練習'}</span><strong>{action.action_type}</strong></div>) : <p>等待 App 傳入練習事件。</p>}</section></> : <section className="panel empty-state">請先從左側選擇一位病人。</section>}</div></div></div>;
 }
 
 export default function UnifiedApp() {
@@ -182,5 +212,6 @@ export default function UnifiedApp() {
   if (!user) return <Login onSignedIn={setUser} />;
   return <div className="app-shell"><header className="topbar"><Brand /><div><span>{profile?.full_name || user.email || '使用者'}</span><button onClick={() => supabase.auth.signOut()}>登出</button></div></header>{!profile ? <div className="loading-screen">載入帳號資料…</div> : !profile.is_active ? <div className="content"><section className="panel">帳號尚未啟用或尚未建檔，請聯絡管理員。</section></div> : profile.role === 'patient' ? <PatientHome profile={profile} /> : ['doctor','doctor_all','therapist','admin','supervisor'].includes(profile.role) ? <DoctorHome user={user} profile={profile} /> : <div className="content"><section className="panel">此帳號沒有醫療或病人權限。</section></div>}</div>;
 }
+
 
 
